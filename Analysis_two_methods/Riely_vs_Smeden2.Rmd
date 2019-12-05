@@ -1,0 +1,465 @@
+---
+title: "Two methods comparison based on one simulation sample"
+author: "Xijin"
+date: "10/24/2019"
+output: pdf_document
+
+header-includes:
+
+ \usepackage{float}
+ \floatplacement{table}{H}
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Motivation
+
+In attemplt to figure out the difference of these two modern methods for sample size calculation, we would work on one single simulated data set and then use both methods. Whole process works like:
+
+
+1. Simulate an original dataset
+
+2. Calculate requried sample size by Riley three-criteria method
+
+3. Re-simulate a sample just change the size of the sample to satisfy three-criteria
+
+4. Develop a model use Maximum likelihood and Heuristic shrinkage modeling method
+
+5. Calculate predictive error metrics (*Brier*, *MAPE*, *MSPE*)
+
+6. Based on values of thses predictive error metrics, recalculate required sample size by metamodel (VanSmeden method)
+
+
+
+```{r,warning=FALSE,error=FALSE,include=FALSE}
+setwd("~/R/ssizepred/weekly_work/Analysis_two_methods")
+source("Compare_dependencies.R")
+source("Compare_functions.R")
+```
+
+
+```{r}
+#data generation setting
+args <- list(
+  mu = c(0,0,0,0),
+  sigma = matrix(c(1,0,0,0,
+                    0,1,0,0,
+                    0,0,1,0,
+                    0,0,0,1),nrow=4),
+  n = 100
+)
+datagen <- "gen.MVNX"
+dgm.par <- c(-1,  0.2832211,  0.2832211,  0.2832211,  0.2832211)
+```
+
+
+```{r}
+# original dataset with 100 samples
+SIMx <- do.call(what=datagen,args=args)
+SIMxy <- gen.binY(SIMx=SIMx,dgm.par=dgm.par)
+#outcome proportion
+prop <- sum(SIMxy[,"y"])/length(SIMxy[,"y"])
+```
+
+
+# Sample size calculation by three criteria (1 and 2)
+```{r}
+t_original <-  knitr::kable(format="latex",
+ x=cbind(Name=c(
+              "Number of predictors",
+              "Outcome proportion"),
+       Values=c(
+               length(args$mu),
+               prop)
+       )
+ )
+```
+
+
+```{r}
+#Cox-Snell R-squared when Nagelkerke is assumed to be 0.15
+csR2 <- 0.15*(1 - (prop^prop*(1-prop)^(1-prop))^2)
+csR2 <- round(csR2,digits = 4)
+
+t_anticipated <-  knitr::kable(format="latex",
+ x=cbind(Name=c("Shrinkage factor",
+              "Adjusted Cox-Snell R-squared",
+              "Absolute difference",
+              "Margin of error"),
+       Values=c(0.9,
+               csR2,   #0.15 is the recommended Nagerkerke R-squared value
+               0.05,  
+               0.05)   #a relatively strict value of margin of error
+       )
+ )
+```
+
+
+```{r}
+# data characteristics 
+n <-nrow(SIMxy)
+P <- length(args$mu)
+E <- prop*n
+
+# anticipated values suggested by Riley
+error_mar <- 0.05
+d <- 0.05
+S <- 0.9
+csR2 <- 0.15*(1 - (prop^prop*(1-prop)^(1-prop))^2)
+```
+
+
+
+```{r, results='asis'}
+cat(c("\\begin{table}[!htb]
+    \\begin{minipage}{.5\\linewidth}
+      \\caption{Characteristics of data (Original, n=100)}
+      \\centering",
+        t_original,
+    "\\end{minipage}%
+    \\begin{minipage}{.5\\linewidth}
+      \\centering
+        \\caption{Anticipated values by Riley}",
+        t_anticipated,
+    "\\end{minipage} 
+\\end{table}"
+))
+```
+
+
+
+```{r}
+s1 <- size1(S,P,csR2)
+s2 <- size2(E,n,csR2,d)
+s3 <- size3(error_margin,E,n)
+Riley_size <- max(s1,s2,s3)
+knitr::kable(format="latex",
+ x=cbind(Name=c("Relative drop",
+              "Absolute difference",
+              "Precise estimation",
+              "Minimumized size"),
+       Values=c(s1,
+               s2,
+               s3,
+               Riley_size)
+       ),caption = "Required sample size by Riley three-criteria method"
+ )
+
+```
+
+
+\newpage
+
+# Predictive error of model with the sample satisfying Riley's three-criteria method
+```{r}
+######Simulation based on the calculated sample size
+args$n <- Riley_size
+SIMx_Riley <- do.call(what=datagen,args=args)
+SIMxy_Riley <- gen.binY(SIMx=SIMx_Riley,dgm.par=dgm.par)
+#outcome proportion
+prop_Riley <- sum(SIMxy[,"y"])/length(SIMxy[,"y"])
+
+```
+
+
+```{r}
+t_data <- knitr::kable(format="latex",
+ x=cbind(Name=c("Number of patients",
+              "Number of predictors",
+              "Outcome proportion"),
+       Values=c(nrow(SIMxy_Riley),
+               length(args$mu),
+               prop_Riley)
+       ), caption = 'Characteristics of data (satisfying three-criteria)'
+ )
+```
+
+
+```{r}
+  SIMx_Riley <- SIMxy_Riley[,-ncol(SIMxy_Riley)]
+  y_Riley <- SIMxy_Riley[,"y"]
+  #model fitting and corresponding predicted values
+  formu <- as.formula(paste("y~",
+                            paste(colnames(SIMxy)[-which(colnames(SIMxy)=="y")],collapse="+"),sep=""))
+  fit <- lrm(formu,data=SIMxy_Riley)
+  #predict outcomes
+  SIMx_Riley <- cbind("Intercept"=1,SIMx_Riley)
+  lp <- unlist(as.matrix(SIMx_Riley[,names(coef(fit))])%*%data.matrix(coef(fit)))
+  pred <- predict.lrm(lp)
+  
+  #metrics calculation
+  brier_Riley_ML <- round(brier_true(p=pred,SIMxy_Riley),digits = 4)
+  mape_Riley_ML  <- round(mape_true(p=pred,SIMxy_Riley,dgm.par),digits = 4)
+  mspe_Riley_ML  <- round(mspe_true(p=pred,SIMxy_Riley,dgm.par),digits = 4)
+```
+
+```{r}
+t_ML_pred_error <- knitr::kable(format="latex",
+ x=cbind(Name=c("Brier",
+              "MAPE",
+              "MSPE"),
+       Values=c(brier_Riley_ML,
+               mape_Riley_ML,
+               mspe_Riley_ML)
+       )
+ )
+```
+
+
+
+```{r}
+t_sample <- knitr::kable(format="latex",
+ x=cbind(Name=c(
+              "Number of predictors",
+              "Outcome proportion"),
+       Values=c(
+               length(args$mu),
+               prop_Riley)
+       ), caption = 'Data Characteristics'
+ )
+```
+
+
+```{r}
+Size_brier_ML <- brier_ML(brier_Riley_ML,Ef=prop_Riley,P)
+Size_mape_ML <- mape_ML(mape_Riley_ML,Ef=prop_Riley,P)
+Size_mspe_ML <- mspe_ML(mspe_Riley_ML,Ef=prop_Riley,P)
+
+
+
+t_ML_size <- knitr::kable(format="latex",
+ x=cbind(Name=c("Sample size by Brier",
+                "Sample size by MAPE",
+                "Sample size by MSPE"),
+       Values=c(Size_brier_ML,
+               Size_mape_ML,
+               Size_mspe_ML))
+       )
+```
+
+
+## Calculation of predicitve error and metamodel result for sample size based on Maximum likelihood modeling strategy 
+ 
+$$ N_{MSPE} = exp((-0.59 - log(MSPE) + 0.36*log(Ef) + 0.94*log(P))/1.06)$$ 
+
+$$N_{MAPE} = exp((-0.48 - log(MAPE) + 0.31*log(Ef) + 0.48*log(P))/0.53)$$
+
+$$N_{Brier} =  exp((-0.91 - log(Brier) + 0.62*log(Ef) + 0.04*log(P))/0.04)$$
+
+```{r, results='asis'}
+cat(c("\\begin{table}[!htb]
+    \\begin{minipage}{.5\\linewidth}
+      \\caption{Predictive error based on ML}
+      \\centering",
+        t_ML_pred_error,
+    "\\end{minipage}%
+    \\begin{minipage}{.5\\linewidth}
+      \\centering
+        \\caption{Calculated sample size by metamodel results}",
+        t_ML_size,
+    "\\end{minipage} 
+\\end{table}"
+))
+```
+
+```{r}
+coef(fit)
+```
+
+
+
+```{r}
+  SIMx_Riley <- SIMxy_Riley[,-ncol(SIMxy_Riley)]
+  y_Riley <- SIMxy_Riley[,"y"]
+
+  #model fitting and corresponding predicted values
+  formu <- as.formula(paste("y~",
+                            paste(colnames(SIMxy)[-which(colnames(SIMxy)=="y")],collapse="+"),sep=""))
+  fit <- heuristicshrink.lrm(SIMxy_Riley)
+  
+  #predict outcomes
+  SIMx_Riley <- cbind("(Intercept)"=1,SIMx_Riley)
+  lp <- unlist(as.matrix(SIMx_Riley[,names(coef(fit$OUT$int.approx$value))])%*%data.matrix(coef(fit$OUT$int.approx$value)))
+  pred <- predict.lrm(lp)
+  
+  #metrics calculation
+  brier_Riley_HS <- round(brier_true(p=pred,SIMxy_Riley),digits = 4)
+  mape_Riley_HS  <- round(mape_true(p=pred,SIMxy_Riley,dgm.par),digits = 4)
+  mspe_Riley_HS  <- round(mspe_true(p=pred,SIMxy_Riley,dgm.par),digits = 4)
+```
+
+
+```{r}
+t_HS_pre_error <- knitr::kable(format="latex",
+ x=cbind(Name=c("Brier",
+              "MAPE",
+              "MSPE"),
+       Values=c(brier_Riley_HS,
+               mape_Riley_HS,
+               mspe_Riley_HS)
+       )
+ )
+```
+
+
+
+```{r}
+Size_brier_HS <- brier_HS(brier_Riley_HS,Ef=prop_Riley,P)
+Size_mape_HS <- mape_HS(brier_Riley_HS,Ef=prop_Riley,P)
+Size_mspe_HS <- mspe_HS(brier_Riley_HS,Ef=prop_Riley,P)
+
+
+
+t_HS_size <-  knitr::kable(format="latex",
+ x=cbind(Name=c("Sample size by Brier",
+                "Sample size by MAPE",
+                "Sample size by MSPE"),
+       Values=c(Size_brier_HS,
+               Size_mape_HS,
+               Size_mspe_HS))
+       )
+```
+
+
+## Calculation of predicitve error and metamodel result for sample size based on Heuristic shrinkage modeling strategy 
+
+$$ N_{MSPE} = exp((-0.75 - log(MSPE) + 0.44*log(Ef) + 0.74*log(P))/0.97)$$ 
+
+$$ N_{MAPE} = exp((-0.56 - log(MAPE) + 0.33*log(Ef) + 0.39*log(P))/0.49)$$
+
+$$ N_{Brier} =  exp((-0.93 - log(Brier) + 0.62*log(Ef) + 0.02*log(P))/0.03)$$
+
+```{r, results='asis'}
+cat(c("\\begin{table}[!htb]
+    \\begin{minipage}{.5\\linewidth}
+      \\caption{Predictive error based on HS}
+      \\centering",
+        t_HS_pre_error,
+    "\\end{minipage}%
+    \\begin{minipage}{.5\\linewidth}
+      \\centering
+        \\caption{Calculated sample size by metamodel results}",
+        t_HS_size,
+    "\\end{minipage} 
+\\end{table}"
+))
+
+```
+
+```{r}
+coef(fit$OUT$int.approx$value)
+```
+
+\newpage
+
+# Comparison of two sample size computation method (Riley and van Smeden)
+```{r, results='asis'}
+t_Rielysize <- knitr::kable(format="latex",
+ x=cbind(Name=c("Relative drop",
+              "Absolute difference",
+              "Precise estimation",
+              "Minimized size"),
+       Values=c(s1,
+               s2,
+               s3,
+               Riley_size)
+       ) )
+
+t_metamodel_ML <- knitr::kable(format="latex",
+ x=cbind(Name=c("Brier",
+                "MAPE",
+                "MSPE"),
+       Values=c(Size_brier_ML,
+               Size_mape_ML,
+               Size_mspe_ML)))
+
+t_metamodel_HS <-  knitr::kable(format="latex",
+ x=cbind(Name=c("Brier",
+                "MAPE",
+                "MSPE"),
+       Values=c(Size_brier_HS,
+               Size_mape_HS,
+               Size_mspe_HS)))
+
+
+cat(c("\\begin{table}[!htb]
+    \\begin{minipage}{.4\\linewidth}
+      \\caption{Riley method}
+      \\centering",
+        t_Rielysize,
+    "\\end{minipage}%
+        \\begin{minipage}{.3\\linewidth}
+      \\caption{Van Smeden (ML)}
+      \\centering",
+        t_metamodel_ML,
+    "\\end{minipage}%
+    \\begin{minipage}{.3\\linewidth}
+      \\centering
+        \\caption{Van Smeden (HS)}",
+        t_metamodel_HS,
+    "\\end{minipage} 
+\\end{table}"
+)) 
+
+```
+
+
+Randomization is introduced during the process of modeling.
+```{r}
+sim <- 1000
+brier_Riley_ML <- as.matrix(0,length=sim)
+mape_Riley_ML <- as.matrix(0,length=sim)
+mspe_Riley_ML <- as.matrix(0,length=sim)
+
+Size_brier_ML <- as.matrix(0,length=sim)
+Size_mape_ML <- as.matrix(0,length=sim)
+Size_mspe_ML <- as.matrix(0,length=sim)
+
+for (i in 1:sim){
+  SIMx_Riley <- do.call(what=datagen,args=args)
+  SIMxy_Riley <- gen.binY(SIMx=SIMx_Riley,dgm.par=dgm.par)
+#outcome proportion
+  prop_Riley <- sum(SIMxy[,"y"])/length(SIMxy[,"y"])
+  SIMx_Riley <- SIMxy_Riley[,-ncol(SIMxy_Riley)]
+  y_Riley <- SIMxy_Riley[,"y"]
+  #model fitting and corresponding predicted values
+  formu <- as.formula(paste("y~",
+                            paste(colnames(SIMxy)[-which(colnames(SIMxy)=="y")],collapse="+"),sep=""))
+  fit <- lrm(formu,data=SIMxy_Riley)
+  #predict outcomes
+  SIMx_Riley <- cbind("Intercept"=1,SIMx_Riley)
+  lp <- unlist(as.matrix(SIMx_Riley[,names(coef(fit))])%*%data.matrix(coef(fit)))
+  pred <- predict.lrm(lp)
+  
+  #metrics calculation
+  brier_Riley_ML[i] <- round(brier_true(p=pred,SIMxy_Riley),digits = 4)
+  mape_Riley_ML[i]  <- round(mape_true(p=pred,SIMxy_Riley,dgm.par),digits = 4)
+  mspe_Riley_ML[i]  <- round(mspe_true(p=pred,SIMxy_Riley,dgm.par),digits = 4)
+  
+Size_brier_ML[i] <- brier_ML(brier_Riley_ML[i],Ef=prop_Riley,P)
+Size_mape_ML[i] <- mape_ML(mape_Riley_ML[i],Ef=prop_Riley,P)
+Size_mspe_ML[i] <- mspe_ML(mspe_Riley_ML[i],Ef=prop_Riley,P)
+}
+  
+```
+
+
+```{r,error=FALSE,warning=FALSE}
+dat_size <- data.frame(cbind(Size_brier_ML,Size_mape_ML,Size_mspe_ML))
+colnames(dat_size) <- c("Brier","MAPE","MSPE")
+library(reshape2)
+dat_size <- melt(dat_size,
+              measure.vars=c('Brier',
+                             'MAPE',
+                             'MSPE'))
+dat_size$variable <- as.factor(dat_size$variable)
+ggplot(data=dat_size)+
+  geom_boxplot(aes(x=variable, y=value))+
+  scale_y_log10(limits = c(2,5000))+
+  geom_hline(aes(yintercept=Riley_size,col="Riley result"))+
+  scale_colour_manual(NULL,values=c('Riley result' = "red"))+
+  ylab("Calculated sample size")
+```

@@ -1,0 +1,95 @@
+---
+title: "Metamodel method for sample size computation"
+author: "Xijin Chen"
+params:
+  p_van: NA
+  Ef_van: NA
+  Modeling: NA
+  MAPE: NA
+  MSPE : NA
+  Brier: NA
+  
+output: pdf_document
+#output: bookdown::pdf_document2
+header-includes:
+  \usepackage{booktabs}
+  
+  
+---
+Metamodel arised by Maarten van Smeden helps us to determine sample size for a prediction model. We calculate the required sample size based on just data characteristics.
+
+
+```{r, echo=FALSE, results='asis'}
+library(knitr)
+library(xtable)
+knitr::kable(cbind('Items'=c(
+              "Number of predictors",
+              "Number of events "),
+            'Values'=c(
+               params$p_van,
+               params$Ef_van)),caption = 'Data characteristics')
+h <- params$Modeling
+```
+
+
+The fundation of this method is the metamodel, which capitalized characteristics and controlling of overfitting problem for prediction of prediction error in linear model. The relationship behind depends on specified modeling strategy. 
+ 
+```{r,echo=FALSE,error=FALSE,warning=FALSE}
+if(params$Modeling == "ML: Maximum likelihood (full model)") {
+      size1 <- ceiling (exp((-0.59 - log(params$MSPE) + 0.36*log((params$Ef_van)) + 0.94*log(params$p_van))/1.06))
+      size2 <- ceiling(exp((-0.48 - log(params$MAPE) + 0.31*log((params$Ef_van)) + 0.48*log(params$p_van))/0.53))
+      size3 <- ceiling (exp((-0.91 - log(params$Brier) + 0.62*log((params$Ef_van)) + 0.04*log(params$p_van))/0.04))
+}
+if(params$Modeling == "Firth: Firth's penalized likelihood (full model)") {
+      size1 <- ceiling (exp((-0.86 - log(params$MSPE) + 0.33*log((params$Ef_van)) + 0.93*log(params$p_van))/1.03))
+      size2 <- ceiling(exp((-0.61 - log(params$MAPE) + 0.29*log((params$Ef_van)) + 0.47*log(params$p_van))/0.51))
+      size3 <- ceiling (exp((-0.95 - log(params$Brier) + 0.62*log((params$Ef_van)) + 0.03*log(params$p_van))/0.03))
+}
+if(params$Modeling == "HS: Heuistic shrinkage") {
+      size1 <- ceiling (exp((-0.75 - log(params$MSPE) + 0.44*log((params$Ef_van)) + 0.74*log(params$p_van))/0.97))
+      size2 <- ceiling(exp((-0.56 - log(params$MAPE) + 0.33*log((params$Ef_van)) + 0.39*log(params$p_van))/0.49))
+      size3 <- ceiling (exp((-0.93 - log(params$Brier) + 0.62*log((params$Ef_van)) + 0.02*log(params$p_van))/0.03))
+}
+if(params$Modeling == "Lasso: Lasso penalized likelihood") {
+      size1 <- ceiling (exp((-0.86 - log(params$MSPE) + 0.46*log((params$Ef_van)) + 0.68*log(params$p_van))/0.93))
+      size2 <- ceiling(exp((-0.59 - log(params$MAPE) + 0.34*log((params$Ef_van)) + 0.35*log(params$p_van))/0.48))
+      size3 <- ceiling (exp((-0.96 - log(params$Brier) + 0.62*log((params$Ef_van)) + 0.02*log(params$p_van))/0.03))
+}
+if(params$Modeling ==  "Ridge: Ridge penalized likelihood") {
+      size1 <- ceiling (exp((-0.93 - log(params$MSPE) + 0.50*log((params$Ef_van)) + 0.49*log(params$p_van))/0.88))
+      size2 <- ceiling(exp((-0.61 - log(params$MAPE) + 0.36*log((params$Ef_van)) + 0.26*log(params$p_van))/0.45))
+      size3 <- ceiling (exp((-0.98 - log(params$Brier) + 0.62*log((params$Ef_van)) + 0.01*log(params$p_van))/0.02))
+}
+if(params$Modeling == "ML_p: Maximum likelihood (backward 1)") {
+      size1 <- ceiling (exp((-0.57 - log(params$MSPE) + 0.36*log((params$Ef_van)) + 0.96*log(params$p_van))/1.03))
+      size2 <- ceiling(exp((-0.45 - log(params$MAPE) + 0.31*log((params$Ef_van)) + 0.49*log(params$p_van))/0.52))
+      size3 <- ceiling (exp((-0.89 - log(params$Brier) + 0.62*log((params$Ef_van)) + 0.04*log(params$p_van))/0.04))
+}
+if(params$Modeling ==  "ML_aic: Maximum likelihood (backward 2)") {
+      size1 <- ceiling (exp((-0.59 - log(params$MSPE) + 0.38*log((params$Ef_van)) + 0.95*log(params$p_van))/1.05))
+      size2 <- ceiling(exp((-0.48 - log(params$MAPE) + 0.31*log((params$Ef_van)) + 0.49*log(params$p_van))/0.53))
+      size3 <- ceiling (exp((-0.91 - log(params$Brier) + 0.62*log((params$Ef_van)) + 0.04*log(params$p_van))/0.04))
+}
+if(params$Modeling == "Firth_p: Firth's penalized likelihood (backward 1)") {
+      size1 <- ceiling (exp((-0.66 - log(params$MSPE) + 0.39*log((params$Ef_van)) + 0.95*log(params$p_van))/1.01))
+      size2 <- ceiling(exp((-0.49 - log(params$MAPE) + 0.30*log((params$Ef_van)) + 0.50*log(params$p_van))/0.52))
+      size3 <- ceiling (exp((-0.90 - log(params$Brier) + 0.62*log((params$Ef_van)) + 0.04*log(params$p_van))/0.04))
+}
+if(params$Modeling ==  "Firth_aic: Firth's penalized likelihood (backward 2)" ) {
+      size1 <- ceiling (exp((-0.74 - log(params$MSPE) + 0.37*log((params$Ef_van)) + 0.95*log(params$p_van))/1.03))
+      size2 <- ceiling(exp((-0.55 - log(params$MAPE) + 0.30*log((params$Ef_van)) + 0.49*log(params$p_van))/0.53))
+      size3 <- ceiling (exp((-0.93 - log(params$Brier) + 0.31*log((params$Ef_van)) + 0.04*log(params$p_van))/0.04))
+}
+
+knitr::kable(
+ cbind('Prediction error metric'=c("MSPE",
+              "MAPE"),
+       'Value' = c(round(params$MSPE,digits = 4),
+                   round(params$MAPE,digits=4)),
+       'Required sample size'=c(size1,
+               size2)
+       ), caption = 'Requied Sample Size by Metamodel'
+)
+```
+
+Modeling strategy: `r h`

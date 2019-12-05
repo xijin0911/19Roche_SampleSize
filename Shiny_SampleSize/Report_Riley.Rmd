@@ -1,0 +1,91 @@
+---
+title: "Three criteria method for sample size computation"
+author: "Xijin Chen"
+params:
+  p: NA
+  csR2_adj: NA
+  S_VH: NA
+  Ef: NA
+  d: NA
+  error_mar: NA
+  
+output: pdf_document
+#output: bookdown::pdf_document2
+header-includes:
+  \usepackage{booktabs}
+  
+  
+---
+Three-criteria method by Richard D Rileyo helps us to determine sample size for a prediction model. Ideally, we get information from data characteristics, and calculate the required sample size based on our anticipation of model performance on independent samples.
+
+```{r, echo=FALSE, results='asis'}
+library(knitr)
+library(xtable)
+t1 <- kable(cbind('Items'=c(#"Number of patients",
+              "Number of predictors",
+              "Number of events "),
+            'Values'=c(#params$n,
+               params$p,
+               params$Ef)), format = "latex", booktabs = TRUE)
+           
+t2 <- kable(cbind('Items'=c("Shrinkage factor",
+              "Adjusted Cox-Snell R-squared",
+              "Absolute difference",
+              "Margin of error"),
+            'Values'=c(params$S_VH,
+               params$csR2_adj,
+               params$d,
+               params$error_mar)), format = "latex", booktabs = TRUE)
+cat(c("\\begin{table}[!htb]
+    \\begin{minipage}{.5\\linewidth}
+      \\caption{Data characteristics}
+      \\centering",
+        t1,
+    "\\end{minipage}%
+    \\begin{minipage}{.5\\linewidth}
+      \\centering
+        \\caption{Input desired values}",
+        t2,
+    "\\end{minipage} 
+\\end{table}"
+))  
+```
+
+
+* Criterion (i) ensuring a global shrinkage factor of 0.9 (or a larger value if better performance of prediction model is required).The close-form solution is based on **sample size n**, **number of predictors p**, **$R^2_{CS\_app}$** (apparent estimate of a prediction model's **'Cox-Snell' $R^2$**, obtained from the development dataset) 
+
+$$S_{VH}=1+\frac{p}{nln(1-R^2_{CS\_{app}})}$$
+
+* Criterion (ii) ensuring a small **absolute difference d** in the apparent and **adjusted Nagelkerke $R^2$** (or a smaller value if better preformance of prediciton model is required). **$R^2_{Nagelkerke}$** is a widely-used measurement for the performance of logistic model. It is a scaled form of  **$R^2_{CS}$** range from 0 to 1. Ensuring small difference between apparent and adjusted **Nagelkerker's $R^2$**, which is adjusted for the optimism, would be able to minimize overfitting on absolute scale.
+
+$$R^2_{Nagelkerkes\_app}-R^2_{Nagelkerkes\_adj} \le \delta$$
+
+* Criterion (iii) ensure precise estimation of the overall risk in the population (margin of error would be 0.05 or smaller). In normal case of univariate comparison tests, where different covariates are not taken into consideration, we would usually set a benchmark for **margin of error $\delta$** and get corresponding sample size.
+
+$$1.96\sqrt{\frac{\hat\phi(1-\hat\phi)}{n}}\le\delta$$
+
+Different criteria ensure the performance of prediction model on new objects from different aspects, thus sample size calculation requires different inputs and have different outputs with respect to these three criteria.
+
+```{r,echo=FALSE,error=FALSE,warning=FALSE}
+size1 <- params$p/((params$S_VH-1)*log(1-params$csR2_adj/params$S_VH))
+
+max_csR2 <- 1- (params$Ef^params$Ef*(1-params$Ef)^(1-params$Ef))^2
+        S_VH2 <- params$csR2_adj/(params$csR2_adj+params$d*max_csR2)
+        
+size2<- params$p/((S_VH2-1)*log(1-params$csR2_adj/S_VH2))
+size3<- ((1.96/params$error_mar)^2)*(params$Ef)*(1-(params$Ef))
+size <- max(ceiling(size1),
+            ceiling(size2),
+             ceiling(size3))
+knitr::kable(
+ cbind(Criteria=c("Criterion 1 (Relative drop)",
+              "Criterion 2 (Absolute difference)",
+              "Criterion 3 (Precise estimation)",
+              "Final required sample size"),
+       'Sample size'=c(ceiling(size1),
+               ceiling(size2),
+               ceiling(size3),
+               size)
+       ), caption = 'Requied Sample Size by Three-criteria Method'
+)
+```
